@@ -6,7 +6,6 @@ Use this after initial chromakey removal to catch stubborn edge pixels
 
 from PIL import Image
 import numpy as np
-import sys
 import argparse
 from pathlib import Path
 from collections import Counter
@@ -29,7 +28,6 @@ def compute_output_path(input_path, output_path):
     - If input is from raw/, route to proc/ with _transparent suffix
     - If output_path provided, use it (user override)
     """
-    from pathlib import Path
 
     if output_path is not None:
         return output_path
@@ -42,23 +40,24 @@ def compute_output_path(input_path, output_path):
     # Check if path contains 'dev/assets/raw/'
     try:
         # Detect 'dev', 'assets', 'raw' sequence
-        dev_index = path_parts.index('dev')
-        if (dev_index + 2 < len(path_parts) and 
-            path_parts[dev_index+1] == 'assets' and 
-            path_parts[dev_index+2] == 'raw'):
-            
+        dev_index = path_parts.index("dev")
+        if (
+            dev_index + 2 < len(path_parts)
+            and path_parts[dev_index + 1] == "assets"
+            and path_parts[dev_index + 2] == "raw"
+        ):
             # Build corresponding proc/ path
             proc_parts = list(path_parts)
-            proc_parts[dev_index+2] = 'proc'
+            proc_parts[dev_index + 2] = "proc"
 
             proc_path = Path(*proc_parts)
-            if not proc_path.stem.endswith('_transparent'):
+            if not proc_path.stem.endswith("_transparent"):
                 proc_path = proc_path.with_stem(f"{proc_path.stem}_transparent")
 
             # Ensure parent directory exists
             proc_path.parent.mkdir(parents=True, exist_ok=True)
 
-            print(f"    Auto-routing: raw/ → proc/")
+            print("    Auto-routing: raw/ → proc/")
             return proc_path
     except (ValueError, IndexError):
         pass
@@ -69,7 +68,7 @@ def compute_output_path(input_path, output_path):
 
 def detect_background_color(image_path):
     """Detect dominant background color from corner samples"""
-    img = Image.open(image_path).convert('RGB')
+    img = Image.open(image_path).convert("RGB")
     data = np.array(img, dtype=np.uint8)
 
     h, w = data.shape[0], data.shape[1]
@@ -77,10 +76,19 @@ def detect_background_color(image_path):
 
     # Sample all 4 corners
     corners = []
-    corners.extend(tuple(px) for px in data[0:sample_size, 0:sample_size, :].reshape(-1, 3))
-    corners.extend(tuple(px) for px in data[0:sample_size, w-sample_size:w, :].reshape(-1, 3))
-    corners.extend(tuple(px) for px in data[h-sample_size:h, 0:sample_size, :].reshape(-1, 3))
-    corners.extend(tuple(px) for px in data[h-sample_size:h, w-sample_size:w, :].reshape(-1, 3))
+    corners.extend(
+        tuple(px) for px in data[0:sample_size, 0:sample_size, :].reshape(-1, 3)
+    )
+    corners.extend(
+        tuple(px) for px in data[0:sample_size, w - sample_size : w, :].reshape(-1, 3)
+    )
+    corners.extend(
+        tuple(px) for px in data[h - sample_size : h, 0:sample_size, :].reshape(-1, 3)
+    )
+    corners.extend(
+        tuple(px)
+        for px in data[h - sample_size : h, w - sample_size : w, :].reshape(-1, 3)
+    )
 
     # Get most common color
     color_counts = Counter(corners)
@@ -99,17 +107,17 @@ def aggressive_cleanup(input_path, output_path=None, key_color=None):
         output_path: Path to save cleaned image (None = overwrite input)
         key_color: RGB tuple of chroma key color (None = auto-detect)
     """
-    print(f"  Applying aggressive cleanup...")
+    print("  Applying aggressive cleanup...")
 
     # Auto-detect background color if not provided
     if key_color is None:
         key_color = detect_background_color(input_path)
 
     # Load image
-    img = Image.open(input_path).convert('RGBA')
+    img = Image.open(input_path).convert("RGBA")
     data = np.array(img, dtype=np.float32)
 
-    r, g, b, a = data[:,:,0], data[:,:,1], data[:,:,2], data[:,:,3]
+    r, g, b, a = data[:, :, 0], data[:, :, 1], data[:, :, 2], data[:, :, 3]
 
     # Convert key color to YCbCr
     key_r, key_g, key_b = float(key_color[0]), float(key_color[1]), float(key_color[2])
@@ -125,7 +133,7 @@ def aggressive_cleanup(input_path, output_path=None, key_color=None):
 
     # More aggressive thresholds
     threshold_near = 55  # Expanded
-    threshold_far = 85   # Extended gradient
+    threshold_far = 85  # Extended gradient
 
     has_alpha = a > 0
     new_alpha = a.copy()
@@ -135,18 +143,25 @@ def aggressive_cleanup(input_path, output_path=None, key_color=None):
     new_alpha[close_mask] = 0
 
     # Gradient zone
-    middle_mask = (color_distance >= threshold_near) & (color_distance <= threshold_far) & has_alpha
-    gradient = (color_distance[middle_mask] - threshold_near) / (threshold_far - threshold_near)
+    middle_mask = (
+        (color_distance >= threshold_near)
+        & (color_distance <= threshold_far)
+        & has_alpha
+    )
+    gradient = (color_distance[middle_mask] - threshold_near) / (
+        threshold_far - threshold_near
+    )
     new_alpha[middle_mask] = a[middle_mask] * gradient
 
     # Extra cleanup: background-color-like pixels with low alpha
     key_r, key_g, key_b = key_color
     tolerance = 50
     bg_ish = (
-        (np.abs(r - key_r) < tolerance) &
-        (np.abs(g - key_g) < tolerance) &
-        (np.abs(b - key_b) < tolerance) &
-        (a < 200) & (a > 0)
+        (np.abs(r - key_r) < tolerance)
+        & (np.abs(g - key_g) < tolerance)
+        & (np.abs(b - key_b) < tolerance)
+        & (a < 200)
+        & (a > 0)
     )
     new_alpha[bg_ish] = 0
 
@@ -155,22 +170,22 @@ def aggressive_cleanup(input_path, output_path=None, key_color=None):
     print(f"    -> Extra cleanup: {np.sum(bg_ish)} background-ish pixels")
 
     # Apply new alpha
-    data[:,:,3] = new_alpha
+    data[:, :, 3] = new_alpha
 
     # Save result (with auto-routing for dev-assets/raw/)
     output_path = compute_output_path(input_path, output_path)
 
-    result = Image.fromarray(data.astype(np.uint8), 'RGBA')
+    result = Image.fromarray(data.astype(np.uint8), "RGBA")
     result.save(output_path)
     return output_path
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Aggressive cleanup for stubborn chromakey edge pixels'
+        description="Aggressive cleanup for stubborn chromakey edge pixels"
     )
-    parser.add_argument('files', nargs='+', help='Input image files')
-    parser.add_argument('-o', '--output', help='Output path (for single file)')
+    parser.add_argument("files", nargs="+", help="Input image files")
+    parser.add_argument("-o", "--output", help="Output path (for single file)")
 
     args = parser.parse_args()
 

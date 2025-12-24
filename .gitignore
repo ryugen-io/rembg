@@ -10,3 +10,8 @@ venv/
 *.swp
 *.swo
 *~
+
+# Build artifacts
+build/
+dist/
+*.egg-info/

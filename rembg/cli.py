@@ -10,7 +10,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from pipeline import BackgroundRemovalPipeline, PipelineConfig, PipelineLogger
+from rembg.pipeline import BackgroundRemovalPipeline, PipelineConfig, PipelineLogger
 
 
 def main() -> int:
